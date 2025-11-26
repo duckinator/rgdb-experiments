@@ -22,17 +22,23 @@ VALUES ($1, $2, $3, $4)
 ON CONFLICT (gem_name, gem_version, version_created_at) DO NOTHING
 ";
 
-fn get_previous_version(gem_name: &str, gem_version: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let body = reqwest::blocking::get(&format!("https://rubygems.org/api/v1/versions/{}.json", gem_name))?
-        .text()?;
+fn get_previous_version(gem_name: &str, gem_version: &str) -> Option<String> {
+    let url = format!("https://rubygems.org/api/v1/versions/{}.json", gem_name);
+    let body = reqwest::blocking::get(&url).ok()?
+        .text().ok()?;
 
-    let val: Value = serde_json::from_str(&body)?;
-    let mut vals: Vec<_> = val.as_array().ok_or("RubyGems.org's API returned a bad result")?.into_iter().filter_map(|v| v.get("number")).map(|v| v.as_str().unwrap()).collect();
+    let val: Value = serde_json::from_str(&body).ok()?;
+    let mut vals: &Vec<_> = val.as_array()?;
+    let mut vals: Vec<_> = vals.into_iter().filter_map(|v| v.get("number")).map(|v| v.as_str().unwrap()).collect();
     vals.sort();
 
-    let idx = vals.iter().position(|v| *v == gem_version).ok_or(format!("couldn't find previous gem version for {gem_name} {gem_version}"))?;
+    let idx = vals.iter().position(|v| *v == gem_version)?;
 
-    Ok(vals[idx - 1].to_owned())
+    if idx == 0 {
+        return None;
+    }
+
+    Some(vals[idx - 1].to_owned())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -48,7 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             gem_name            text NOT NULL CHECK ( length(gem_name) < 100 ),
             gem_version         text NOT NULL CHECK ( length(gem_version) < 100 ),
             version_created_at  TIMESTAMP NOT NULL,
-            previous_version    text NOT NULL CHECK ( length(previous_version) < 100 ),
+            previous_version    text CHECK ( length(previous_version) < 100 ),
             reviewed            boolean DEFAULT false,
             reviewer_gh_ids     integer[] DEFAULT array[]::integer[],
             UNIQUE (gem_name, gem_version, version_created_at)
@@ -77,7 +83,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let version_created_at = version_created_at.unwrap();
         let gem_name: &str = row.get(1);
         let gem_version: &str = row.get(2);
-        let previous_version = get_previous_version(gem_name, gem_version)?;
+
+        println!("Determining previous version of {gem_name} {gem_version}");
+        let previous_version = get_previous_version(gem_name, gem_version);
 
         println!("Adding: {gem_name} {gem_version} {version_created_at}");
         client.execute(ADD_ROW, &[&gem_name, &gem_version, &previous_version, &version_created_at])?;
