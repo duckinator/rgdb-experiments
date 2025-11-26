@@ -33,7 +33,7 @@ end
 def reviewed_gems
   $conn.exec_params("
     SELECT * FROM push_reviews
-    WHERE approvals >= $1 OR rejections >= $1
+    WHERE (approvals + rejections) >= $1
     ORDER BY version_created_at
   ", [REQUIRED_REVIEWS]) do |result|
     result.map { |row|
@@ -152,9 +152,27 @@ post '/review' do
   default_page(message)
 end
 
+
+def diff_link(g)
+  "https://my.diffend.io/gems/#{g[:name]}/#{g[:previous_version]}/#{g[:version]}"
+end
+
+def gem_link(g)
+  "<a href=#{diff_link(g).inspect}>#{g[:name]} #{g[:version]}</a>"
+end
+
 def summarize_reviewed_gem(g)
-  link = "https://my.diffend.io/gems/#{g[:name]}/#{g[:previous_version]}/#{g[:version]}"
-  "<li><a href=#{link.inspect}>#{g[:name]} #{g[:version]}</a></li>"
+  "<li>#{gem_link(g)}</li>"
+end
+
+def summarize_unsure_gem(g)
+  <<~EOF
+    <tr>
+      <td>#{gem_link(g)}</td>
+      <td>#{g[:approvals]}</td>
+      <td>#{g[:rejections]}</td>
+    </tr>
+  EOF
 end
 
 get '/report' do
@@ -205,9 +223,14 @@ get '/report' do
 
     <h2>Projects With Disagreement</h2>
     <p>Here's the projects with at least #{REQUIRED_REVIEWS} reviews, but disagreement about whether they are safe or not.</p>
-    <ul>
-      #{unsure.map(&method(:summarize_reviewed_gem)).join("\n      ")}
-    </ul>
+    <table>
+      <tr>
+        <th>Release</th>
+        <th>Approved</th>
+        <th>Disapproved</th>
+      </tr>
+      #{unsure.map(&method(:summarize_unsure_gem)).join("\n      ")}
+    </table>
   </main>
   EOF
 end
