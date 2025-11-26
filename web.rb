@@ -31,11 +31,11 @@ def mark_skipped(gem_name, gem_version)
 end
 
 def reviewed_gems
-  $conn.exec("
-    SELECT * FROM push_reviews TABLESAMPLE BERNOULLI (30)
-    WHERE (approvals + rejections) >= #{REQUIRED_REVIEWS}
+  $conn.exec_params("
+    SELECT * FROM push_reviews
+    WHERE approvals >= $1 OR rejections >= $1
     ORDER BY version_created_at
-  ") do |result|
+  ", [REQUIRED_REVIEWS]) do |result|
     result.map { |row|
       gem_name, gem_version, approvals, rejections, skips = row.values_at(
         'gem_name',
