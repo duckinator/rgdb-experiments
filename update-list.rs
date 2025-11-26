@@ -56,7 +56,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             version_created_at  TIMESTAMP NOT NULL,
             previous_version    text CHECK ( length(previous_version) < 100 ),
             reviewed            boolean DEFAULT false,
-            reviewer_gh_ids     integer[] DEFAULT array[]::integer[],
+            approvals           integer DEFAULT 0,
+            rejections          integer DEFAULT 0,
+            skips               integer DEFAULT 0,
             UNIQUE (gem_name, gem_version, version_created_at)
         )
     ")?;
